@@ -15,6 +15,7 @@ A. Configuration Instruction
 ---------------------------- 
 App structure: 
 |-conf-app-playground		- app folder
+
 	|-static/		- contains style files and templated
 		|-bootstrap/	- Bootstrap3 and CSS files
 		|-fonts/	- font files
