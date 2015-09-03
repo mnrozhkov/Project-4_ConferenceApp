@@ -17,6 +17,8 @@ __author__ = 'wesc+api@google.com (Wesley Chun)'
 from datetime import datetime, time, date
 
 import endpoints
+import logging
+
 from protorpc import messages
 from protorpc import message_types
 from protorpc import remote
@@ -68,8 +70,10 @@ DEFAULTS = {
 }
 
 SESSION_DEFAULTS = {
+    "highlights": "Not provided",
     "speaker": "Unknown",
     "typeOfSession": "Keynote",
+    "venue": "Main Hall",
 }
 
 OPERATORS = {
@@ -600,19 +604,24 @@ class ConferenceApi(remote.Service):
         """Copy relevant fields from Session to SessionForm."""
 
         sf = SessionForm()
-        sf.name = sess.name
-        sf.highlights = sess.highlights
-        sf.speaker = sess.speaker
-        sf.duration = sess.duration
-        sf.typeOfSession = getattr(SessionType, sess.typeOfSession)
-        if sf.date:
-            sf.date = str(sess.date)
-        sf.timeStart = str(sess.timeStart)
-        sf.timeEnd = str(sess.timeEnd)
-        sf.venue = sess.venue
-        sf.topics = sess.topics
+        for field in sf.all_fields():
+            if hasattr(sess, field.name):
+                if field.name == 'date':
+                    sf.date = str(sess.date)
+                elif field.name.endswith('timeStart'):
+                    sf.timeStart = str(sess.timeStart)
+                elif field.name.endswith('timeEnd'):
+                    sf.timeEnd = str(sess.timeEnd)
+                elif field.name.endswith('typeOfSession'):
+                    try:
+                        setattr(sf, field.name, getattr(SessionType, getattr(sess, field.name)))
+                    except AttributeError:
+                        setattr(sf, field.name, getattr(SessionType, 'NOT_SPECIFIED'))
+                else:
+                    setattr(sf, field.name, getattr(sess, field.name))
         sf.websafeKey = sess.key.urlsafe()
         sf.check_initialized()
+
         return sf
 
 
@@ -635,23 +644,8 @@ class ConferenceApi(remote.Service):
         s_key = ndb.Key(Session, new_id, parent=conf_key)
 
         #get data
-        data = {}
-        data['name'] = request.name
-        data['highlights'] = request.highlights
-        data['speaker'] = request.speaker
-        data['duration'] = request.duration
-        data['typeOfSession'] = request.typeOfSession.name
-        data['venue'] = request.venue
-        data['topics'] = request.topics
-        data['key'] = s_key
-
-        # convert dates from strings to Date objects
-        data['timeStart'] = int(request.timeStart)
-        data['timeEnd'] = int(request.timeEnd)
-        if request.date is not None:
-             data['date'] = datetime.strptime(request.date[:10], '%Y-%m-%d').date()
-        else:
-            data['date'] = request.date
+        data = {field.name: getattr(request, field.name) for field in request.all_fields() if field.name != "websafeConferenceKey"}
+        del data['websafeKey']
 
         # add default values for those missing (both data model & outbound Message)
         for df in SESSION_DEFAULTS:
@@ -659,24 +653,23 @@ class ConferenceApi(remote.Service):
                 data[df] = SESSION_DEFAULTS[df]
                 setattr(request, df, SESSION_DEFAULTS[df])
 
-        # store Session data & return (modified) SessionForm
-        session_key = Session(**data).put()
+        if data['date']:
+            data['date'] = datetime.strptime(data['date'][:10], "%Y-%m-%d").date()
+        if data['timeStart']:
+            data['timeStart'] = int(data['timeStart'])
+        if data['timeEnd']:
+            data['timeEnd'] = int(data['timeEnd'])
+        data['typeOfSession'] = str(data['typeOfSession'])
+        data['key'] = s_key
 
         # set memcache for featured speaker and session
-        MEMCACHE_FEATURED_SPEAKERS_KEY = request.websafeConferenceKey
-        sessions = Session.query(Session.speaker == request.speaker,
-                                 ancestor=conf_key)
-        if sessions.count() > 1:
-            featuredSpeaker_cache = {}
-            featuredSpeaker_cache['speaker'] = request.speaker
-            featuredSpeaker_cache['sessionNames'] = [session.name for session in sessions]
+        if data['speaker'] and data['speaker'] != "Unknown":
+            taskqueue.add(params={'websafeConferenceKey': request.websafeConferenceKey,
+                                  'speaker': data['speaker']},
+                          url='/tasks/set_featured_speaker')
 
-            #set memcache
-            FeaturedSpeaker = memcache.get(MEMCACHE_FEATURED_SPEAKERS_KEY)
-            if FeaturedSpeaker:
-                memcache.add(MEMCACHE_FEATURED_SPEAKERS_KEY, featuredSpeaker_cache)
-            else:
-                memcache.set(MEMCACHE_FEATURED_SPEAKERS_KEY, featuredSpeaker_cache)
+        # store Session data & return (modified) SessionForm
+        Session(**data).put()
 
         return self._copySessionToForm(s_key.get())
 
@@ -729,9 +722,7 @@ class ConferenceApi(remote.Service):
             path='/conference/{websafeConferenceKey}/session/speaker/{speaker}',
             http_method='GET', name='getConferenceSessionsBySpeaker')
     def getConferenceSessionsBySpeaker(self, request):
-        """Given a conference, return all sessions of a specified type 
-        (eg lecture, keynote, workshop)
-        """
+        """Given a conference, return all sessions for by Speaker"""
 
         #get conference key
         conference_key = ndb.Key(Conference, request.websafeConferenceKey)
@@ -759,7 +750,8 @@ class ConferenceApi(remote.Service):
                 'No conference found with key: %s' % request.websafeConferenceKey)
 
         # transform {date} into date format
-        date = datetime.strptime(request.date[:10], '%Y-%m-%d').date()
+        date = datetime.strptime(request.date, '%Y-%m-%d').date()
+        print("date: ", date)
 
         # get sessions on this date
         sessions_all = Session.query(ancestor=conference_key)
@@ -781,12 +773,9 @@ class ConferenceApi(remote.Service):
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
 
-        # convert time integer to python time
-        date = Session.date
-
         # get sessions for conference in a time range
         sessions_all = Session.query(ancestor=conference_key)
-        sessions_ByTime = sessions_all.filter(ndb.AND(Session.timeStart>=request.timeStart, Session.timeStart<=request.timeEnd))
+        sessions_ByTime = sessions_all.filter(ndb.AND(Session.timeStart >= request.timeStart, Session.timeStart <= request.timeEnd))
 
         return SessionForms(items=[self._copySessionToForm(sess) for sess in sessions_ByTime]
         )
@@ -894,7 +883,21 @@ class ConferenceApi(remote.Service):
 
 
 # - - - Featured Speaker - - - - - - - - - - - - - - - - - - -
-    @endpoints.method(SESSION_GET_FEATURED_SPEAKER, StringMessage_Featured,
+    @staticmethod
+    def setFeaturedSpeaker(websafeConferenceKey, speaker):
+        """
+        Check a speacker in a memcache for featured speaker
+        and set him to the memcache if he is a speaker for at least 2 sessions
+        """
+
+        conf_key = ndb.Key(Conference, websafeConferenceKey)
+        sessions = Session.query(Session.speaker == speaker, ancestor=conf_key)
+        if sessions.count() > 1:
+            featuredSpeaker_cache = "%s is a featured speaker for %s sessions!" % (speaker, sessions.count())
+            memcache.set(websafeConferenceKey, featuredSpeaker_cache)
+
+
+    @endpoints.method(SESSION_GET_FEATURED_SPEAKER, StringMessage,
             path='conference/{websafeConferenceKey}/session/speaker/featured',
             http_method='GET', name='getFeaturedSpeaker')
     def getFeaturedSpeaker(self, request):
@@ -905,12 +908,33 @@ class ConferenceApi(remote.Service):
         FeaturedSpeakers = memcache.get(MEMCACHE_FEATURED_KEY)
         if not FeaturedSpeakers:
             FeaturedSpeakers = ''  # return empty speaker form on failure for no results
-        sm_f = StringMessage_Featured()
-        setattr(sm_f, 'speaker', FeaturedSpeakers['speaker'])
-        setattr(sm_f, 'sessionNames', str(FeaturedSpeakers['sessionNames']))
-        sm_f.check_initialized()
 
-        return sm_f
+        return StringMessage(data=FeaturedSpeakers)
 
+
+# - - - Session Inaquality Filter - - - - - - - - - - - - - - - - - - -
+
+    SESS_FILTER_TYPE_TIME = endpoints.ResourceContainer(
+        message_types.VoidMessage,
+        websafeConferenceKey=messages.StringField(1),
+        typeOfSession=messages.EnumField(SessionType, 2),
+        timeStart=messages.IntegerField(3),
+    )
+
+    @endpoints.method(SESS_FILTER_TYPE_TIME, SessionForms,
+            path='conference/{websafeConferenceKey}/session/{typeOfSession}/time/{timeStart}',
+            http_method='GET', name='filterSessionNotTypeByTime')
+    def filterSessionNotTypeByTime(self, request):
+        """Return filtered Sessions which are != type of Session and
+        != timeStart
+        """
+
+        type = str(request.typeOfSession)
+        sessions_noType = Session.query(ndb.OR(Session.typeOfSession < str(type),
+										Session.typeOfSession > str(type)))
+        sessions = [sess for sess in sessions_noType if sess.timeStart <= request.timeStart]
+
+        return SessionForms(items=[self._copySessionToForm(sess)
+                                   for sess in sessions])
 
 api = endpoints.api_server([ConferenceApi]) # register API

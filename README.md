@@ -85,10 +85,29 @@ Question: Explain your design choices. Explain in a couple of paragraphs y
 
 Answer:
 	1) Session class is implemented as single class, not as a child of a Conference class. This desision is 
-	made for for simplicity. 
-	2) Speaker is implemented as a plain name string for simplicity
-	For further developent, it can be stored as a single class. This will allow to store some 
+	made for for simplicity.
+	For storing data  about Session class, the following data types were used:
+	- StringProperty: for 'name', 'highlights', 'speaker', 'typeOfSession', 'venue' and 'topics' properties.
+	These properties describe data about entities using text string.
+	- DateProperty is required by 'date' property to have opportunity to order Sessions by date,
+	align dates of Session with dates of Conferences. DateProperty also allows to easy implement other
+	Google API services, like Google Calendar API (for example, to get user an opportunity to add Session
+	to his calendar).
+	- IntegerProperty is applied for 'timeStart', 'timeEnd' and 'duration' properties. For this case, the decision was made
+	as a consensus between required functionality, time and my knoweldge of Python and Google Engine SDK.
+	Initially, I've tried to implement TimeProperty, however, I've got a problem: data input in format
+	HH:MM was transformed into '1970-01-01 HH:MM:00' by default. So, I had some problems with Session time: formatting,
+	extracting HH:MM from '1970-01-01 HH:MM:00', and it was not comparable with time of other entities
+	such as conferece with date '2015-08-30 00:00:00' (for example).
+	Thus, I've decided to simplify and use simple IntegerProperty for this. It's much easier to work with this format
+	of time: it is short, it can be compared with timeEnd easier, or to calculate duration of the Session.
+	(Actually, 'duration' was not calculated in this task, left for further development). So, this is enough
+	for the current project tasks.
+	
+	2) Speaker is implemented as a plain name string for simplicity and time saving.
+	For further development, it can be stored as a single class. This will allow to store some
 	additional info about a speaker (picture, contacts) and make the app more functional.
+
 	3) all required methods are implemented as well
 		getConferenceSessions(websafeConferenceKey) 
 		etConferenceSessionsByType(websafeConferenceKey, typeOfSession) 
@@ -106,7 +125,7 @@ Answer:
 #Task 3: Work on indexes and queries
 Question: Think about other types of queries that would be useful for this application
 Answer: 
-	getConferenceSessionsByDate(websafeConferenceKey, date, endDate) - return session for a specific conference on a specific date. In case when conference lasts few days, this option may be helpful
+	getConferenceSessionsByDate(websafeConferenceKey, date, date) - return session for a specific conference on a specific date. In case when conference lasts few days, this option may be helpful
 
 	getConferenceSessionsByTime(websafeConferenceKey, timeStart, timeEnd) - helps to find session in specified time interval. This help to plan a part time participating in a confernce (e.g. from 9:00am tp 12:00pm)  
 
@@ -119,16 +138,29 @@ Question: Solve the following query related problem
 Answer: 
 	Google datastore has some limitaitons to queries. For example, "combining too many filters, using inequalities for multiple properties, or combining an inequality with a sort order on a different property are all currently disallowed" (Google, NDB Queries documentation: https://cloud.google.com/appengine/docs/python/ndb/queries)   
 	In this case we requires two inequality filters on two different properties (type of session and start time of session). This will cause a BadRequestError.
-	
-	Working solutions:
 
-		sessions = Session.query()
-		sessions = sessions.filter(Session.typeOfSession != 'WORKSHOP')
+	Step 1:  Inequality 'property != value' can be implemented as '(property < value) OR (property > value)'
+		sessions = Session.query(ndb.OR(Session.typeOfSession < 'WORKSHOP',
+										Session.typeOfSession > 'WORKSHOP')
+		This finds all entities with at least one tag unequal to 'WORKSHOP'. 
+	
+	Step 2: To find all non­workshop sessions before 7 pm, we can use 'property IN [value1, value2, ...]' tests for membership in a list of possible values, is implemented a '(property == value1) OR (property == value2) OR ...'
 		sessions = sessions.filter(Session.timeStart <= 1900)
-		
-		OR 
-		sessions = Session.query()
-		sessions = sessions.filter(ndb.AND(Session.typeOfSession != 'WORKSHOP', Session.timeStart<=1900))
+
+	The special filter method was implemented to query such kind of queries:
+
+	    def filterSessionNotTypeByTime(self, request):
+	        """Return filtered Sessions which are != type of Session and
+	        != timeStart
+	        """
+
+	        type = str(request.typeOfSession)
+	        sessions_noType = Session.query(ndb.OR(Session.typeOfSession < str(type),
+											Session.typeOfSession > str(type)))
+	        sessions = [sess for sess in sessions_noType if sess.timeStart <= request.timeStart]
+
+	        return SessionForms(items=[self._copySessionToForm(sess)
+	                                   for sess in sessions])
 
 
 # Task 4: Add a Task
