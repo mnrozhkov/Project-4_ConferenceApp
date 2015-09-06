@@ -154,8 +154,8 @@ class SessionForm(messages.Message):
     duration      = messages.StringField(4)
     typeOfSession = messages.EnumField('SessionType', 5, default='NOT_SPECIFIED')
     date          = messages.StringField(6)  #YYYY-MM-DD
-    timeStart     = messages.StringField(7)  #HH:MM
-    timeEnd       = messages.StringField(8)  #HH:MM
+    timeStart     = messages.StringField(7)  #HHMM
+    timeEnd       = messages.StringField(8)  #HHMM
     venue         = messages.StringField(9)
     topics        = messages.StringField(10, repeated=True)
     websafeKey    = messages.StringField(11)
