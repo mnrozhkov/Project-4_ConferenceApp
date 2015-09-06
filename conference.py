@@ -612,6 +612,8 @@ class ConferenceApi(remote.Service):
                     sf.timeStart = str(sess.timeStart)
                 elif field.name.endswith('timeEnd'):
                     sf.timeEnd = str(sess.timeEnd)
+                elif field.name.endswith('duration'):
+                    sf.timeEnd = str(sess.timeEnd)
                 elif field.name.endswith('typeOfSession'):
                     try:
                         setattr(sf, field.name, getattr(SessionType, getattr(sess, field.name)))
@@ -636,12 +638,13 @@ class ConferenceApi(remote.Service):
             raise endpoints.BadRequestException("Session 'name' field required")
 
         #get session key
-        conf_key = ndb.Key(Conference, request.websafeConferenceKey)
-        if not conf_key:
+        conf = ndb.Key(urlsafe=request.websafeConferenceKey).get()
+
+        if not conf:
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
-        new_id = ndb.Model.allocate_ids(size=1, parent=conf_key)[0]
-        s_key = ndb.Key(Session, new_id, parent=conf_key)
+        new_id = Session.allocate_ids(size=1, parent=conf.key)[0]
+        s_key = ndb.Key(Session, new_id, parent=conf.key)
 
         #get data
         data = {field.name: getattr(request, field.name) for field in request.all_fields() if field.name != "websafeConferenceKey"}
@@ -659,6 +662,8 @@ class ConferenceApi(remote.Service):
             data['timeStart'] = int(data['timeStart'])
         if data['timeEnd']:
             data['timeEnd'] = int(data['timeEnd'])
+        if data['duration']:
+            data['duration'] = int(data['duration'])
         data['typeOfSession'] = str(data['typeOfSession'])
         data['key'] = s_key
 
@@ -795,7 +800,7 @@ class ConferenceApi(remote.Service):
                       path='session/{sessionKey}',
                       http_method='DELETE', name='removeSessionFromWishlist')
     def removeSessionFromWishlist(self, request):
-        """Unregister user for selected conference."""
+        """Remove session from wishlist."""
         return self._manageSessionInWishlist(request, add=False)
 
 
@@ -822,7 +827,7 @@ class ConferenceApi(remote.Service):
                 raise ConflictException(
                     "You have already added this session to your wishlist")
 
-            if prof.sessionKeysInWishlist[0] is None:
+            if prof.sessionKeysInWishlist is None:
                 prof.sessionKeysInWishlist[0] = session_key
             else:
                 prof.sessionKeysInWishlist.append(session_key)
@@ -886,7 +891,7 @@ class ConferenceApi(remote.Service):
     @staticmethod
     def setFeaturedSpeaker(websafeConferenceKey, speaker):
         """
-        Check a speacker in a memcache for featured speaker
+        Check a speaker in a memcache for featured speaker
         and set him to the memcache if he is a speaker for at least 2 sessions
         """
 
