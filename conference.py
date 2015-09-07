@@ -694,7 +694,7 @@ class ConferenceApi(remote.Service):
         """Given a conference, return all sessions"""
 
         # #get conference key
-        conference_key = ndb.Key(Conference, request.websafeConferenceKey)
+        conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
         if not conference_key:
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
@@ -712,7 +712,7 @@ class ConferenceApi(remote.Service):
         """
 
         #get conference key
-        conference_key = ndb.Key(Conference, request.websafeConferenceKey)
+        conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
         if not conference_key:
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
@@ -730,7 +730,7 @@ class ConferenceApi(remote.Service):
         """Given a conference, return all sessions for by Speaker"""
 
         #get conference key
-        conference_key = ndb.Key(Conference, request.websafeConferenceKey)
+        conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
         if not conference_key:
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
@@ -749,7 +749,7 @@ class ConferenceApi(remote.Service):
         """Given a conference, return all sessions on specific date"""
 
         #get conference key
-        conference_key = ndb.Key(Conference, request.websafeConferenceKey)
+        conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
         if not conference_key:
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
@@ -773,7 +773,7 @@ class ConferenceApi(remote.Service):
         """Given a conference, return all sessions between timeStart and timeEnd"""
 
         # #get conference key
-        conference_key = ndb.Key(Conference, request.websafeConferenceKey)
+        conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
         if not conference_key:
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.websafeConferenceKey)
@@ -868,15 +868,17 @@ class ConferenceApi(remote.Service):
 
         # show all sessions for all conferences to attend
         session_wishlist_keys = [ndb.Key(urlsafe=session_key) for session_key in prof.sessionKeysInWishlist]
+        print("session_wishlist_keys: ", session_wishlist_keys)
         sessions_wishlist = ndb.get_multi(session_wishlist_keys)
 
         # if user wants to see selected session for a specific conference
         # use {websafeConferenceKey} to select them
         if request.websafeConferenceKey is not None:
             output = []
-            conference_key = ndb.Key(Conference, request.websafeConferenceKey)
+            conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
             for item in session_wishlist_keys:
                 if item.parent() == conference_key:
+                    print("item.parent: ", item.parent())
                     output.append(item)
             sessions_wishlist = ndb.get_multi(output)
             return SessionForms(items=[self._copySessionToForm(sess)
@@ -895,7 +897,7 @@ class ConferenceApi(remote.Service):
         and set him to the memcache if he is a speaker for at least 2 sessions
         """
 
-        conf_key = ndb.Key(Conference, websafeConferenceKey)
+        conf_key = ndb.Key(urlsafe=websafeConferenceKey)
         sessions = Session.query(Session.speaker == speaker, ancestor=conf_key)
         if sessions.count() > 1:
             featuredSpeaker_cache = "%s is a featured speaker for %s sessions!" % (speaker, sessions.count())
