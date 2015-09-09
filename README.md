@@ -14,6 +14,7 @@ App info:
 A. Configuration Instruction
 ---------------------------- 
 App structure: 
+    
     |-conf-app-playground
 	|-static/				- contains style files and templated
 		|-bootstrap/		- Bootstrap3 and CSS files
