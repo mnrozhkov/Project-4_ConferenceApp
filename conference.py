@@ -186,7 +186,6 @@ class ConferenceApi(remote.Service):
         if not user:
             raise endpoints.UnauthorizedException('Authorization required')
         user_id = getUserId(user)
-
         if not request.name:
             raise endpoints.BadRequestException("Conference 'name' field required")
 
@@ -608,13 +607,13 @@ class ConferenceApi(remote.Service):
             if hasattr(sess, field.name):
                 if field.name == 'date':
                     sf.date = str(sess.date)
-                elif field.name.endswith('timeStart'):
+                elif field.name == 'timeStart':
                     sf.timeStart = str(sess.timeStart)
-                elif field.name.endswith('timeEnd'):
+                elif field.name == 'timeEnd':
                     sf.timeEnd = str(sess.timeEnd)
-                elif field.name.endswith('duration'):
+                elif field.name == 'duration':
                     sf.timeEnd = str(sess.timeEnd)
-                elif field.name.endswith('typeOfSession'):
+                elif field.name == 'typeOfSession':
                     try:
                         setattr(sf, field.name, getattr(SessionType, getattr(sess, field.name)))
                     except AttributeError:
@@ -633,12 +632,19 @@ class ConferenceApi(remote.Service):
         user = endpoints.get_current_user()
         if not user:
             raise endpoints.UnauthorizedException('Authorization required')
+        # get user ID (email)
+        user_id = getUserId(user)
 
         if not request.name:
             raise endpoints.BadRequestException("Session 'name' field required")
 
         #get session key
         conf = ndb.Key(urlsafe=request.websafeConferenceKey).get()
+
+        #get conference organizer ID (email) and compare with current user ID
+        conf_organizer_id = conf.key.parent().id()
+        if user_id != conf_organizer_id:
+            raise endpoints.BadRequestException("Only the Conference Organizer able to create Session")
 
         if not conf:
             raise endpoints.NotFoundException(
@@ -667,20 +673,20 @@ class ConferenceApi(remote.Service):
         data['typeOfSession'] = str(data['typeOfSession'])
         data['key'] = s_key
 
+        # store Session data & return (modified) SessionForm
+        Session(**data).put()
+
         # set memcache for featured speaker and session
         if data['speaker'] and data['speaker'] != "Unknown":
             taskqueue.add(params={'websafeConferenceKey': request.websafeConferenceKey,
                                   'speaker': data['speaker']},
                           url='/tasks/set_featured_speaker')
 
-        # store Session data & return (modified) SessionForm
-        Session(**data).put()
-
         return self._copySessionToForm(s_key.get())
 
 
     @endpoints.method(SESS_POST_REQUEST, SessionForm,
-                      path='/conference/{websafeConferenceKey}/createSession',
+                      path='/conference/{websafeConferenceKey}/createsession',
                       http_method='POST', name='createSession')
     def createSession(self, request):
         """Create new Session."""
@@ -770,7 +776,7 @@ class ConferenceApi(remote.Service):
                       path='/conference/{websafeConferenceKey}/session/time/{timeStart}/{timeEnd}',
                       http_method='GET', name='getConferenceSessionsByTime')
     def getConferenceSessionsByTime(self, request):
-        """Given a conference, return all sessions between timeStart and timeEnd"""
+        """Return all sessions starting between timeStart and timeEnd"""
 
         # #get conference key
         conference_key = ndb.Key(urlsafe=request.websafeConferenceKey)
@@ -868,7 +874,6 @@ class ConferenceApi(remote.Service):
 
         # show all sessions for all conferences to attend
         session_wishlist_keys = [ndb.Key(urlsafe=session_key) for session_key in prof.sessionKeysInWishlist]
-        print("session_wishlist_keys: ", session_wishlist_keys)
         sessions_wishlist = ndb.get_multi(session_wishlist_keys)
 
         # if user wants to see selected session for a specific conference
