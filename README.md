@@ -15,25 +15,25 @@ A. Configuration Instruction
 ---------------------------- 
 App structure: 
     
-|-conf-app-playground
-	|-static/				- contains style files and templated
-		|-bootstrap/		- Bootstrap3 and CSS files
-		|-fonts/			- font files
-		|-js/				- JavaSctipt files
-		|-img/    			- images
-		|-styles.css		- main CSS 
-		|-partials			- some html files 
-	|-templates/			- index.html template
-	|-app.yaml				- specifies how URL paths correspond to request handlers and static files
-	|-conference.py |.pyc	- conference server-side Python App Engine API
-	|-cron.yaml				- configuration for regularly scheduled tasks 
-	|-index.yaml 			- index definitions
-	|-LINCESE 				- Apache License
-	|-main.py | .pyc 		- conference server-side Python App Engine HTTP controller handlers 
-	|-models.py | .pyc 		- conference server-side Python App Engine data & ProtoRPC models
-	|-README.txt			- this file
-	|-settings.py | .pyc 	- conference server-side Python App Engine app user settings
-	|-utils.py | .pyc 		- help utilities 
+	|-conf-app-playground
+		|-static/				- contains style files and templated
+			|-bootstrap/		- Bootstrap3 and CSS files
+			|-fonts/			- font files
+			|-js/				- JavaSctipt files
+			|-img/    			- images
+			|-styles.css		- main CSS 
+			|-partials			- some html files 
+		|-templates/			- index.html template
+		|-app.yaml				- specifies how URL paths correspond to request handlers and static 	files
+		|-conference.py |.pyc	- conference server-side Python App Engine API
+		|-cron.yaml				- configuration for regularly scheduled tasks 
+		|-index.yaml 			- index definitions
+		|-LINCESE 				- Apache License
+		|-main.py | .pyc 		- conference server-side Python App Engine HTTP controller handlers 
+		|-models.py | .pyc 		- conference server-side Python App Engine data & ProtoRPC models
+		|-README.txt			- this file
+		|-settings.py | .pyc 	- conference server-side Python App Engine app user settings
+		|-utils.py | .pyc 		- help utilities 
 
 Requrements:
 This App was developed with Google App Engine SDK for Python. It used: 
